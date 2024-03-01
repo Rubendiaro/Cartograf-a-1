@@ -1,0 +1,199 @@
+---
+title: "CATOGRAFIA_1"
+author: "Ruben Díaz"
+date: "2024-02-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CARTOGRAFIA CATALUÑA MUNICIPALES 2019
+
+Cargamos librerias
+
+```{r}
+library(pacman)
+p_load(tidyverse)
+p_load(sf)
+p_load(ggplot2)
+p_load(sf)
+p_load(readxl)
+```
+
+Cargamos datos de excel con datos de municipales y el shapefile del mapa de Cataluña
+
+```{r}
+muni23J <- read_xlsx("23J_muni.xlsx")
+
+muni_mapa <- st_read("recintos_municipales_inspire_peninbal_etrs89.shp")
+
+```
+
+Visualizamos los datos y su formato
+
+```{r}
+glimpse(muni23J)
+```
+
+```{r}
+glimpse(muni_mapa)
+```
+
+Modificamos la base de datos
+
+```{r}
+data_cat <- muni23J |> 
+ filter(`Nombre de Comunidad` == "Cataluña") ###dataframe catalunya
+
+data_cat <- data_cat |> 
+ mutate(voto_psoe = PSOE/`Votos válidos`) ### % voto al PSC
+
+data_cat <- data_cat |> 
+ mutate(voto_erc = ERC/`Votos válidos`) ### % voto al ERC
+
+data_cat <- data_cat |> 
+ mutate(dif_izquierdas = voto_psoe - voto_erc)
+
+summary(data_cat$dif_izquierdas)
+```
+
+Elaboramos trasnformaciones de formato para enlazar databases
+
+```{r}
+data_cat <- data_cat |> 
+ mutate(codmun = paste0(sprintf("%02d", `Código de Provincia`), sprintf("%03d", `Código de Municipio`)))
+
+
+head(data_cat$codmun) ### tenemos el codigo ine cprov + cmuni llamado codmun
+```
+
+Construimos el otro codmun en el shapefile
+
+```{r}
+###csambiamos el tipo de datos
+muni_mapa <- muni_mapa |> 
+ mutate(codmun = substr(NATCODE, 7, 11))
+
+head(muni_mapa$codmun)
+
+###cortamos shp solo para cataluña
+
+muni_mapa_cat <- muni_mapa |> 
+ filter(CODNUT2 == "ES51")
+
+```
+
+Enlazamos las bases de datos
+
+```{r}
+data_conj <- left_join(muni_mapa_cat, data_cat, by = "codmun")
+```
+
+
+Visualizamos voto al psoe
+
+```{r}
+grafico1 <- ggplot(data = data_conj) +
+  geom_sf(aes(fill=voto_psoe), color = "darkred")+
+  labs(title = "Distribución voto al PSC",
+       subtitle = "Elecciones generales 23J",
+       caption = "Fuente: Ministerio del Interior",
+       fill = NULL)+
+ theme_void()+
+ theme(text = element_text(family = "serif",face = "bold", size = 15, color = "darkred"))+
+ scale_fill_gradient2(low = "white", high = "red3", limits = c(0,0.55), breaks = c(0.4, 0.2), labels = c("+%PSC", "-%PSC"))
+
+print(grafico1)
+
+```
+
+Visualizamos voto a ERC
+
+```{r}
+grafico2 <- ggplot(data = data_conj) +
+  geom_sf(aes(fill=voto_erc), color = "gold4")+
+  labs(title = "Distribución voto al ERC",
+       subtitle = "Elecciones generales 23J",
+       caption = "Fuente: Ministerio del Interior",
+       fill = NULL)+
+ theme_void()+
+ theme(text = element_text(family = "serif",face = "bold", size = 15, color = "gold4"))+
+ scale_fill_gradient2(low = "lightyellow", high = "gold2", breaks = c(0.4, 0.2), labels = c("+%ERC", "-%ERC"))
+
+print(grafico2)
+```
+
+
+Visualizamos diferencia de voto PSC - ERC
+
+```{r}
+grafico3 <- ggplot(data = data_conj) +
+  geom_sf(aes(fill=dif_izquierdas), color = "orange3")+
+  labs(title = "Distribución entre las izquierdas catalanas",
+       subtitle = "Elecciones generales 23J",
+       caption = "Fuente: Ministerio del Interior",
+       fill = NULL)+
+ theme_void()+
+ theme(text = element_text(family = "serif",face = "bold", size = 15))+
+ scale_fill_gradient2(low = "gold", mid = "lightyellow2", high = "red2", breaks = c(-0.25, 0.25), labels = c("+%ERC", "+%PSC"))
+
+print(grafico3)
+                                                                                   
+```
+
+
+Trabajamos la base de datos nacional para hacer mapas nacionales
+
+```{r}
+muni23J <- muni23J |> 
+ mutate(voto_psoe = PSOE/`Votos válidos`) ###% voto psoe nacional
+
+muni23J <- muni23J |> 
+ mutate(voto_pp = PP/`Votos válidos`) ###% voto PP nacional
+
+muni23J <- muni23J |> 
+ mutate(dif_bipart = voto_psoe - voto_pp) ###% diferencia de voto pp psoe
+
+muni23J <- muni23J |> 
+ mutate(codmun = paste0(sprintf("%02d", `Código de Provincia`), sprintf("%03d", `Código de Municipio`))) ###formato de datos nacionales
+
+
+
+data_conj_nac <- left_join(muni_mapa, muni23J) ###conjoint nacional
+```
+visualizamos mapa psc nacional
+
+```{r}
+grafico4 <- ggplot(data = data_conj_nac) +
+  geom_sf(aes(fill=voto_psoe), color = NA)+
+  labs(title = "Distribución voto al PSOE",
+       subtitle = "Elecciones generales 23J",
+       caption = "Fuente: Ministerio del Interior",
+       fill = NULL)+
+ theme_void()+
+ theme(text = element_text(family = "serif",face = "bold", size = 15, color = "darkred"))+
+ scale_fill_gradient2(low = "white", high = "red3", limits = c(0,0.75), breaks = c(0.5, 0.15), labels = c("+%PSOE", "-%PSOE"))
+
+print(grafico4)
+```
+
+
+Visualizamos diferencia pp psoe
+
+```{r}
+grafico5 <- ggplot(data = data_conj_nac) +
+  geom_sf(aes(fill=dif_bipart), color = NA)+
+  labs(title = "Distribución voto al PSOE",
+       subtitle = "Elecciones generales 23J",
+       caption = "Fuente: Ministerio del Interior",
+       fill = NULL)+
+ theme_void()+
+ theme(text = element_text(family = "serif",face = "bold", size = 15, color = "black"))+
+ scale_fill_viridis_b(option = "plasma", labels = c("+%PP", "-", "+%PSOE"))
+
+print(grafico5)
+```
+
+
