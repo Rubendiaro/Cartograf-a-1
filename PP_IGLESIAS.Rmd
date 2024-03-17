@@ -1,0 +1,210 @@
+---
+title: "d"
+author: "Ruben Díaz"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load(sf)
+p_load(tidyverse)
+p_load(ggplot2)
+p_load(readxl)
+p_load(readr)
+p_load(nominatimlite)
+p_load(ggspatial)
+p_load(tidygeocoder)
+p_load(maps)
+p_load(ggrepel)
+p_load(extrafont)
+font_import(pattern = "Arial Unicode MS")
+p_load(ggmap)
+p_load(osmdata)
+
+```
+
+```{r}
+shp <- st_read("bseccenv10sh1f1_20160101_2.shp")###cargamos el shapefile de secciones censales
+
+shp1 <- shp |> 
+  filter(startsWith(as.character(MUNICIPI), "080193"))###restringimos el shp a municipio de Barcelona
+
+glimpse(shp)###visualizamos
+```
+
+```{r}
+sinagogas <- tibble::tribble(
+~nombre,                  ~dir,
+"Iglesia de Belén","calle del Cometa 3, Distrito Ciutat Vella, Barcelona, 08002",
+"Iglesia de Nuestra Señora de la Bonanova","Carrer de Ganduxer 105, Distrito Sant Gervasi, Barcelona, 08022",
+"Iglesia castrense de Barcelona","Carrer del Montalegre 7, Distrito Ciutat Vella, Barcelona, 08001",
+"Iglesia de Nuestra Señora del Coll","Plaça de la Virreina 1, Distrito Gràcia, Barcelona, 08024",
+"Convento de los Ángeles","Plaça d'Ernest Lluch i Martín 5, Distrito Sarrià-Sant Gervasi, Barcelona, 08017",
+"Convento de San Francisco","Plaça de Sant Francesc 1, Distrito Ciutat Vella, Barcelona, 08002",
+"Convento de Santa Catalina","Carrer de Sant Honorat 3, Distrito Ciutat Vella, Barcelona, 08002",
+"Ermita de Santa Cruz de Olorde","Carrer de l'Hospital 56, Distrito Ciutat Vella, Barcelona, 08001",
+"Iglesia de San Felipe Neri","Plaça de Sant Felip Neri 5, Distrito Ciutat Vella, Barcelona, 08002",
+"Santuario de Santa Gema","Carrer de Sardenya 116, Distrito Eixample, Barcelona, 08025",
+"Iglesia de San Gregorio Taumaturgo","Carrer de Còrsega 194, Distrito Sant Gervasi, Barcelona, 08036",
+"Iglesia de la Virgen del Carmen","Carrer de Floridablanca 115, Distrito Ciutat Vella, Barcelona, 08011",
+"Iglesia de la Virgen del Carmen","Plaça de la Barceloneta 8, Distrito Ciutat Vella, Barcelona, 08003",
+"Iglesia de Nuestra Señora de Gracia y San José","Carrer de Aribau 23, Distrito Eixample, Barcelona, 08011",
+"Iglesia de San Paciano","Carrer del Passeig de la Zona Franca 1, Distrito Sants-Montjuïc, Barcelona, 08038",
+"Iglesia de Santa Marta","Carrer de les Magdalenes 1, Distrito Ciutat Vella, Barcelona, 08002",
+"Iglesia del Inmaculado Corazón de María","Carrer de Ramon Turró 1, Distrito Sant Martí, Barcelona, 08005",
+"Iglesia de San Jaime","Carrer dels Ferran 28, Distrito Ciutat Vella, Barcelona, 08002",
+"Iglesia de Santa María Reina","Carrer de Madrazo 232, Distrito Sarrià-Sant Gervasi, Barcelona, 08006",
+"Iglesia de San Miguel","Carrer de Còrsega 333, Distrito Sant Gervasi, Barcelona, 08037",
+"Monasterio de San Pablo del Campo","Plaça de Sant Pere Nolasc 1, Distrito Ciutat Vella, Barcelona, 08002",
+"Monasterio de San Pedro de las Puellas","Carrer de Jonqueres 5, Distrito Ciutat Vella, Barcelona, 08003",
+"Monasterio de Santa Ana","Carrer dels Còdols 1, Distrito Ciutat Vella, Barcelona, 08002",
+"Parroquia de San Carlos Borromeo","Plaça de Sarrià 5, Distrito Sarrià-Sant Gervasi, Barcelona, 08017",
+"Parroquia de San Juan Bautista de Gracia","Plaça de la Vila de Gràcia 1, Distrito Gràcia, Barcelona, 08012",
+"Parroquia de Santa María de Gracia de Jesús","Carrer de Torrijos 51, Distrito Ciutat Vella, Barcelona, 08012",
+"Iglesia de Nuestra Señora de Pompeya","Carrer de Sardenya 177, Distrito Eixample, Barcelona, 08013",
+"Iglesia de San Raimundo de Peñafort","Carrer de Sants 3, Distrito Sants-Montjuïc, Barcelona, 08014",
+"Real Santuario de San José de la Montaña","Carrer de Sant Josep de la Muntanya 25, Distrito Gràcia, Barcelona, 08024",
+"Iglesia y convento de las Salesas","Carrer de Sèneca 24, Distrito Eixample, Barcelona, 08006",
+"Iglesia de San Agustín","Carrer del Comte d'Urgell 278, Distrito Eixample, Barcelona, 08036",
+"Iglesia de San Juan de Horta","Carrer de Lepant 296, Distrito Horta-Guinardó, Barcelona, 08032",
+"Iglesia de San Miguel del Puerto","Carrer dels Flassaders 2, Distrito Ciutat Vella, Barcelona, 08003",
+"Iglesia de San Severo","Carrer de Requesens 16, Distrito Ciutat Vella, Barcelona, 08001",
+"Iglesia de San Vicente de Sarriá","Carrer de Sarrià 95, Distrito Sarrià-Sant Gervasi, Barcelona, 08017",
+"Santuario de Santa Eulalia de Vilapicina","Carrer de les Acàcies 12, Distrito Nou Barris, Barcelona, 08042",
+"Santuario de Nuestra Señora del Monte Carmelo","Carrer de Manuel Arnús 30, Distrito Horta-Guinardó, Barcelona, 08042")###hacemos un data frame con las sinagogas de barcelona
+
+Sinagogas_DIR_COOR <- sinagogas |> 
+  tidygeocoder::geocode(dir, method = 'arcgis', lat = latitud , long = longitud)###geocodificamos el formato
+
+ggplot(Sinagogas_DIR_COOR, aes(longitud, latitud), color = "skyblue") +
+  borders("world", regions="Spain") + geom_point() +
+  ggrepel::geom_label_repel(aes(label = nombre)) +
+  theme_void()###visualizamos
+```
+
+```{r}
+Barcelona_SHP <- geo_lite_sf("Barcelona",
+                   limit = 1,
+                   points_only = FALSE, full_results=TRUE)###cargamos un mapa general de Barcelona
+
+Sinagogas_DIR_SHP <- st_as_sf(Sinagogas_DIR_COOR, 
+                      coords = c( x = "longitud", y = "latitud"), 
+                      crs = 4326)###Cambiamos la geocodificación a formato shapefile
+
+
+
+
+
+ggplot(Barcelona_SHP)+
+ geom_sf()+
+ geom_sf_text(data = Sinagogas_DIR_SHP, aes(label = "🕆︎"), size=5, color = "yellow4")+
+ theme_void()+
+ ggtitle("Barcelona Municipio")###visualizamos sinagogas con ambas capas
+```
+
+```{r}
+shp1 <- st_centroid(shp1)###pintamos centroides en el shapefile de secciones censales de BCN
+shp1 <- st_transform(shp1, 4326)###cambiamos tamaño para ajustarlo al mapa
+
+
+plot(st_geometry(shp1), axes = T)###visualizamos los puntos
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=shp1,
+          inherit.aes = FALSE,
+          colour = "black",
+          alpha = .8,
+          size = .3,
+          shape = 18)+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")###visualizamos las secciones censlaes con un puntito sobre la capa de barcelona
+
+```
+
+
+```{r}
+data_secciones_bcn <- read_xlsx("DATOS_EJERCICIO_FINAL.xlsx")###cargamos secciones censlaes excel
+
+
+shp1$SECCION <- shp1$SECCIO###homogeneizamos la variable de unión que es sección censal
+
+shp1 <- shp1 |> 
+ select(-SECCIO)
+
+SHP_cominado <- inner_join(shp1,data_secciones_bcn, by = "SECCION")###fusionamos el shapefile de secciones censales con el dataframe con voto por seccion censal de excel
+SHP_cominado1 <-  distinct(SHP_cominado, SECCION, DISTRICTE, .keep_all = T) ### ELIMINAMOS DUPLICADOS Y TENEMOS EL DATO POR SECCION CENSAL EN SHAPEFILE
+
+```
+
+```{r}
+SHP_cominado1 <- SHP_cominado1 |>
+ mutate(percent_pp = PP/CENSO*100)
+
+media_pp <- mean(SHP_cominado1$percent_pp)
+
+SHP_PP_si <- SHP_cominado1 |> 
+ filter(percent_pp>12)
+
+SHP_PP_no <- SHP_cominado1 |> 
+ filter(percent_pp<7)
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=SHP_PP_si,
+          inherit.aes = FALSE,
+          colour = "skyblue4",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+  geom_sf(data=SHP_PP_no,
+          inherit.aes = FALSE,
+          colour = "red3",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+ geom_sf_text(data = Sinagogas_DIR_SHP,
+              aes(label = "🕆︎"),
+              size=5, 
+              color = "yellow4")+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")
+```
+
+```{r}
+SHP_cominado1 <- tibble::rowid_to_column(SHP_cominado1, "ID")
+
+library(units)
+```
+
+```{r}
+DIST_TOTAL <- as.data.frame(st_distance(Sinagogas_DIR_SHP, SHP_cominado1) |> 
+  set_units(km))
+```
+
+```{r}
+DIST_TOTAL_MEDIA <- DIST_TOTAL|> 
+ mutate(dist_media = rowMeans(DIST_TOTAL))
+
+DIST_TOTAL_MEDIA <- tibble::rowid_to_column(DIST_TOTAL_MEDIA, "ID")
+
+DIST_TOTAL_MEDIA <- DIST_TOTAL_MEDIA|>
+ select(ID, dist_media)
+
+SHP_final <- full_join(SHP_cominado1, DIST_TOTAL_MEDIA)
+```
+```{r}
+REG <- lm(percent_pp ~ dist_media, data = SHP_final)
+
+summary(REG)
+```
+
