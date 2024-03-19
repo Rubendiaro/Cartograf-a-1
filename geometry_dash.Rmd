@@ -1,0 +1,191 @@
+---
+title: "d"
+author: "Ruben Díaz"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load(sf)
+p_load(tidyverse)
+p_load(ggplot2)
+p_load(readxl)
+p_load(readr)
+p_load(nominatimlite)
+p_load(ggspatial)
+p_load(tidygeocoder)
+p_load(maps)
+p_load(ggrepel)
+p_load(extrafont)
+font_import(pattern = "Arial Unicode MS")
+p_load(ggmap)
+p_load(osmdata)
+
+```
+
+```{r}
+shp <- st_read("bseccenv10sh1f1_20160101_2.shp")###cargamos el shapefile de secciones censales
+
+shp1 <- shp |> 
+  filter(startsWith(as.character(MUNICIPI), "080193"))###restringimos el shp a municipio de Barcelona
+
+glimpse(shp)###visualizamos
+```
+
+```{r}
+Iglesias <- tibble::tribble(
+~nombre,                  ~dir,
+"Gran Logia de España", "Carrer de Bailèn 7 Distrito Eixample Barcelona 08010",
+"Gran Oriente Español", "Carrer de Balmes 129 Distrito Eixample Barcelona 08008",
+"Logia Unión Española", "Carrer de la Diputació 238 Distrito Eixample Barcelona 08007",
+"Logia Justícia Universal", "Carrer de Bailèn 7 Distrito Eixample Barcelona 08010",
+"Templo Masónico de Barcelona", "Carrer de Aribau 197 Distrito Eixample Barcelona 08021",
+"Gran Logia Simbólica Española", "Carrer de la Princesa 24 Distrito Ciutat Vella Barcelona 08003",
+"Logia Fraternidad Universal", "Carrer de Mallorca 214 Distrito Eixample Barcelona 08008",
+"Templo Masónico Fraternidad Universal", "Carrer de la Diputació 202 Distrito Eixample Barcelona 08011",
+"Gran Logia Femenina de España", "Carrer del Comte d'Urgell 187 Distrito Eixample Barcelona 08036",
+"Logia Constancia", "Carrer de Còrsega 222 Distrito Eixample Barcelona 08036",
+"Templo Masónico de la Logia Cóndor", "Carrer de Mallorca 114 Distrito Eixample Barcelona 08008",
+"Logia Libertad", "Carrer de la Diputació 249 Distrito Eixample Barcelona 08007",
+"Templo Masónico de la Logia Acacia", "Carrer de la Marina 148 Distrito Sant Martí Barcelona 08013",
+"Logia Fraternidad Barcelonesa", "Carrer de Balmes 145 Distrito Eixample Barcelona 08008",
+"Gran Oriente Nacional de España", "Carrer del Consell de Cent 237 Distrito Eixample Barcelona 08011",
+"Logia Humanidad", "Carrer de la Marina 137 Distrito Sant Martí Barcelona 08013",
+"Gran Logia Simbólica Española", "Carrer de Sant Pere Més Baix 69 Distrito Ciutat Vella Barcelona 08003",
+"Templo Masónico de la Logia Tolerancia", "Carrer del Comte d'Urgell 240 Distrito Eixample Barcelona 08011")###hacemos un data frame con las Iglesias de barcelona
+
+Iglesias_DIR_COOR <- Iglesias |> 
+  tidygeocoder::geocode(dir, method = 'arcgis', lat = latitud , long = longitud)###geocodificamos el formato
+
+ggplot(Iglesias_DIR_COOR, aes(longitud, latitud), color = "skyblue") +
+  borders("world", regions="Spain") + geom_point() +
+  ggrepel::geom_label_repel(aes(label = nombre)) +
+  theme_void()###visualizamos
+```
+
+```{r}
+Barcelona_SHP <- geo_lite_sf("Barcelona",
+                   limit = 1,
+                   points_only = FALSE, full_results=TRUE)###cargamos un mapa general de Barcelona
+
+Iglesias_DIR_SHP <- st_as_sf(Iglesias_DIR_COOR, 
+                      coords = c( x = "longitud", y = "latitud"), 
+                      crs = 4326)###Cambiamos la geocodificación a formato shapefile
+
+
+
+
+
+ggplot(Barcelona_SHP)+
+ geom_sf()+
+ geom_sf_text(data = Iglesias_DIR_SHP, aes(label = "🎗︎"), size=4, color = "yellow4")+
+ theme_void()+
+ ggtitle("Barcelona Municipio")###visualizamos Iglesias con ambas capas
+```
+
+```{r}
+shp1 <- st_centroid(shp1)###pintamos centroides en el shapefile de secciones censales de BCN
+shp1 <- st_transform(shp1, 4326)###cambiamos tamaño para ajustarlo al mapa
+
+
+plot(st_geometry(shp1), axes = T)###visualizamos los puntos
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=shp1,
+          inherit.aes = FALSE,
+          colour = "black",
+          alpha = .8,
+          size = .3,
+          shape = 18)+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")###visualizamos las secciones censlaes con un puntito sobre la capa de barcelona
+
+```
+
+
+```{r}
+data_secciones_bcn <- read_xlsx("DATOS_EJERCICIO_FINAL.xlsx")###cargamos secciones censlaes excel
+
+
+shp1$SECCION <- shp1$SECCIO###homogeneizamos la variable de unión que es sección censal
+
+shp1 <- shp1 |> 
+ select(-SECCIO)
+
+SHP_cominado <- inner_join(shp1,data_secciones_bcn, by = "SECCION")###fusionamos el shapefile de secciones censales con el dataframe con voto por seccion censal de excel
+SHP_cominado1 <-  distinct(SHP_cominado, SECCION, DISTRICTE, .keep_all = T) ### ELIMINAMOS DUPLICADOS Y TENEMOS EL DATO POR SECCION CENSAL EN SHAPEFILE
+
+```
+
+```{r}
+SHP_cominado1 <- SHP_cominado1 |>
+ mutate(percent_erc = ERC.CATSÍ/CENSO*100)
+
+media_erc <- mean(SHP_cominado1$percent_erc)
+
+SHP_erc_si <- SHP_cominado1 |> 
+ filter(percent_erc>12)
+
+SHP_erc_no <- SHP_cominado1 |> 
+ filter(percent_erc<7)
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=SHP_erc_si,
+          inherit.aes = FALSE,
+          colour = "green4",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+  geom_sf(data=SHP_erc_no,
+          inherit.aes = FALSE,
+          colour = "red3",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+ geom_sf_text(data = Iglesias_DIR_SHP,
+              aes(label = "🎗︎"),
+              size=3, 
+              color = "yellow4")+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")
+```
+
+```{r}
+SHP_cominado1 <- tibble::rowid_to_column(SHP_cominado1, "ID")
+
+library(units)
+```
+
+```{r}
+DIST_TOTAL <- as.data.frame(st_distance(Iglesias_DIR_SHP, SHP_cominado1) |> 
+  set_units(km))
+```
+
+```{r}
+DIST_TOTAL_MEDIA <- DIST_TOTAL|> 
+ mutate(dist_media = rowMeans(DIST_TOTAL))
+
+DIST_TOTAL_MEDIA <- tibble::rowid_to_column(DIST_TOTAL_MEDIA, "ID")
+
+DIST_TOTAL_MEDIA <- DIST_TOTAL_MEDIA|>
+ select(ID, dist_media)
+
+SHP_final <- full_join(SHP_cominado1, DIST_TOTAL_MEDIA)
+```
+```{r}
+REG <- lm(percent_erc ~ DIST_TOTAL_MEDIA, data = SHP_final)
+
+summary(REG)
+```
+
