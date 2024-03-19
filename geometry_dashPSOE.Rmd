@@ -1,0 +1,201 @@
+---
+title: "d"
+author: "Ruben Díaz"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load(sf)
+p_load(tidyverse)
+p_load(ggplot2)
+p_load(readxl)
+p_load(readr)
+p_load(nominatimlite)
+p_load(ggspatial)
+p_load(tidygeocoder)
+p_load(maps)
+p_load(ggrepel)
+p_load(extrafont)
+font_import(pattern = "Arial Unicode MS")
+p_load(ggmap)
+p_load(osmdata)
+
+```
+
+```{r}
+shp <- st_read("bseccenv10sh1f1_20160101_2.shp")###cargamos el shapefile de secciones censales
+
+shp1 <- shp |> 
+  filter(startsWith(as.character(MUNICIPI), "080193"))###restringimos el shp a municipio de Barcelona
+
+glimpse(shp)###visualizamos
+```
+
+```{r}
+discotecas <- tibble::tribble(
+~nombre,                  ~dir,
+"Opium Barcelona", "Passeig Marítim Barceloneta 34, Barcelona 08003",
+"CDLC Barcelona", "Passeig Marítim Barceloneta 32, Barcelona 08003",
+"Pacha Barcelona", "Passeig Marítim Barceloneta 38, Barcelona 08003",
+"Shoko Barcelona", "Passeig Marítim Barceloneta 36, Barcelona 08003",
+"Catwalk Club", "Carrer de Ramon Trias Fargas 2-4, Barcelona 08005",
+"Sutton Club Barcelona", "Carrer de Tuset 13, Barcelona 08006",
+"Razzmatazz", "Carrer dels Almogàvers 122, Barcelona 08018",
+"Input High Fidelity Dance Club", "Avinguda de Francesc Ferrer i Guàrdia 13, Barcelona 08038",
+"Eclipse Barcelona", "Passeig de Picasso 22, Barcelona 08003",
+"City Hall Barcelona", "Rambla de Catalunya 2-4, Barcelona 08007",
+"Moog", "Carrer de l'Arc del Teatre 3, Barcelona 08002",
+"Hyde Club", "Carrer de Pau Claris 178, Barcelona 08037",
+"La Terrrazza", "Poble Espanyol, Av. de Francesc Ferrer i Guàrdia 13, Barcelona 08038",
+"Macarena Club", "Carrer Nou de Sant Francesc 5, Barcelona 08002",
+"CDLC Restaurant Lounge Club", "Passeig Marítim Barceloneta 32, Barcelona 08003",
+"Otto Zutz Club", "Carrer de Lincoln 15, Barcelona 08006",
+"Club Catwalk", "Carrer de Ramon Trias Fargas 2-4, Barcelona 08005",
+"R33", "Carrer de Tànger 33, Barcelona 08018",
+"Upload Barcelona", "Carrer de Tarragona 141, Barcelona 08014",
+"Almodosvar Karaoke", "Carrer Pi i Margall Gràcia 08024"
+)###hacemos un data frame con las discotecas de barcelona
+
+discotecas_DIR_COOR <- discotecas |> 
+  tidygeocoder::geocode(dir, method = 'arcgis', lat = latitud , long = longitud)###geocodificamos el formato
+
+ggplot(discotecas_DIR_COOR, aes(longitud, latitud), color = "skyblue") +
+  borders("world", regions="Spain") + geom_point() +
+  ggrepel::geom_label_repel(aes(label = nombre)) +
+  theme_void()###visualizamos
+```
+
+```{r}
+Barcelona_SHP <- geo_lite_sf("Barcelona",
+                   limit = 1,
+                   points_only = FALSE, full_results=TRUE)###cargamos un mapa general de Barcelona
+
+discotecas_DIR_SHP <- st_as_sf(discotecas_DIR_COOR, 
+                      coords = c( x = "longitud", y = "latitud"), 
+                      crs = 4326)###Cambiamos la geocodificación a formato shapefile
+
+
+
+
+
+ggplot(Barcelona_SHP)+
+ geom_sf()+
+ geom_sf_text(data = discotecas_DIR_SHP, aes(label = "🎗︎"), size=4, color = "yellow4")+
+ theme_void()+
+ ggtitle("Barcelona Municipio")###visualizamos discotecas con ambas capas
+```
+
+```{r}
+shp1 <- st_centroid(shp1)###pintamos centroides en el shapefile de secciones censales de BCN
+shp1 <- st_transform(shp1, 4326)###cambiamos tamaño para ajustarlo al mapa
+
+
+plot(st_geometry(shp1), axes = T)###visualizamos los puntos
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=shp1,
+          inherit.aes = FALSE,
+          colour = "black",
+          alpha = .8,
+          size = .3,
+          shape = 18)+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")###visualizamos las secciones censlaes con un puntito sobre la capa de barcelona
+
+```
+
+
+```{r}
+data_secciones_bcn <- read_xlsx("DATOS_EJERCICIO_FINAL.xlsx")###cargamos secciones censlaes excel
+
+
+shp1$SECCION <- shp1$SECCIO###homogeneizamos la variable de unión que es sección censal
+
+shp1 <- shp1 |> 
+ select(-SECCIO)
+
+SHP_cominado <- inner_join(shp1,data_secciones_bcn, by = "SECCION")###fusionamos el shapefile de secciones censales con el dataframe con voto por seccion censal de excel
+SHP_cominado1 <-  distinct(SHP_cominado, SECCION, DISTRICTE, .keep_all = T) ### ELIMINAMOS DUPLICADOS Y TENEMOS EL DATO POR SECCION CENSAL EN SHAPEFILE
+
+```
+
+```{r}
+SHP_cominado1 <- SHP_cominado1 |>
+ mutate(percent_podemos = PODEMOS/CENSO*100)
+
+media_podemos <- mean(SHP_cominado1$percent_podemos)
+
+SHP_podemos_si <- SHP_cominado1 |> 
+ filter(percent_podemos>7)
+
+SHP_podemos_no <- SHP_cominado1 |> 
+ filter(percent_podemos<7)
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+  geom_sf(data=SHP_podemos_si,
+          inherit.aes = FALSE,
+          colour = "green4",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+  geom_sf(data=SHP_podemos_no,
+          inherit.aes = FALSE,
+          colour = "red3",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+ geom_sf_text(data = discotecas_DIR_SHP,
+              aes(label = "🎗︎"),
+              size=3, 
+              color = "yellow4")+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con centroides por SC")
+```
+
+```{r}
+SHP_cominado1 <- tibble::rowid_to_column(SHP_cominado1, "ID")
+
+library(units)
+```
+
+```{r}
+DIST_TOTAL <- as.data.frame(st_distance(discotecas_DIR_SHP, SHP_cominado1) |> 
+  set_units(km))
+```
+
+```{r}
+DIST_TOTAL_MEDIA <- DIST_TOTAL|> 
+ mutate(dist_media = rowMeans(DIST_TOTAL))
+
+DIST_TOTAL_MEDIA <- tibble::rowid_to_column(DIST_TOTAL_MEDIA, "ID")
+
+DIST_TOTAL_MEDIA <- DIST_TOTAL_MEDIA|>
+ select(ID, dist_media)
+
+SHP_final <- full_join(SHP_cominado1, DIST_TOTAL_MEDIA)
+```
+```{r}
+REG <- lm(percent_podemos ~ dist_media, data = SHP_final)
+
+summary(REG)
+```
+
+```{r}
+ggplot(SHP_final, aes(x = dist_media, y = percent_podemos)) +
+  geom_point() +
+  stat_smooth(method = lm)+
+  theme_minimal()
+```
+
