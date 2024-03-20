@@ -1,0 +1,377 @@
+---
+title: "Voto a PODEMOS y turismo en Barcelona 2015"
+author: "César Navarro y Rubén Díaz"
+date: "2024-03-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(pacman)
+p_load(sf)
+p_load(tidyverse)
+p_load(ggplot2)
+p_load(readxl)
+p_load(readr)
+p_load(nominatimlite)
+p_load(ggspatial)
+p_load(tidygeocoder)
+p_load(maps)
+p_load(ggrepel)
+p_load(extrafont)
+p_load(ggmap)
+p_load(osmdata)
+
+```
+
+##Analizamos si la cercanía del colegio electoral a las discotecas (variable independiente) aumentó el % de voto a Podemos (variable dependiente) en el municipio de Barcelona en 2016.
+
+```{r}
+discotecas <- tibble::tribble(
+~nombre,                  ~dir,
+"Opium Barcelona", "Passeig Marítim Barceloneta 34, Barcelona 08003",
+"CDLC Barcelona", "Passeig Marítim Barceloneta 32, Barcelona 08003",
+"Pacha Barcelona", "Passeig Marítim Barceloneta 38, Barcelona 08003",
+"Shoko Barcelona", "Passeig Marítim Barceloneta 36, Barcelona 08003",
+"Catwalk Club", "Carrer de Ramon Trias Fargas 2-4, Barcelona 08005",
+"Sutton Club Barcelona", "Carrer de Tuset 13, Barcelona 08006",
+"Razzmatazz", "Carrer dels Almogàvers 122, Barcelona 08018",
+"Input High Fidelity Dance Club", "Avinguda de Francesc Ferrer i Guàrdia 13, Barcelona 08038",
+"Eclipse Barcelona", "Passeig de Picasso 22, Barcelona 08003",
+"City Hall Barcelona", "Rambla de Catalunya 2-4, Barcelona 08007",
+"Moog", "Carrer de l'Arc del Teatre 3, Barcelona 08002",
+"Hyde Club", "Carrer de Pau Claris 178, Barcelona 08037",
+"La Terrrazza", "Poble Espanyol, Av. de Francesc Ferrer i Guàrdia 13, Barcelona 08038",
+"Macarena Club", "Carrer Nou de Sant Francesc 5, Barcelona 08002",
+"CDLC Restaurant Lounge Club", "Passeig Marítim Barceloneta 32, Barcelona 08003",
+"Otto Zutz Club", "Carrer de Lincoln 15, Barcelona 08006",
+"Club Catwalk", "Carrer de Ramon Trias Fargas 2-4, Barcelona 08005",
+"R33", "Carrer de Tànger 33, Barcelona 08018",
+"Upload Barcelona", "Carrer de Tarragona 141, Barcelona 08014",
+"Almodosvar Karaoke", "Carrer Pi i Margall Gràcia 08024")###hacemos un data frame con las discotecas de barcelona
+
+discotecas_DIR_COOR <- discotecas |> 
+  tidygeocoder::geocode(dir, method = 'arcgis', lat = latitud , long = longitud)###geocodificamos el formato
+
+ggplot(discotecas_DIR_COOR, aes(longitud, latitud), color = "skyblue") +
+  borders("world", regions="Spain") + geom_point() +
+  ggrepel::geom_label_repel(aes(label = nombre)) +
+  theme_void()###visualizamos
+```
+
+```{r}
+Barcelona_SHP <- geo_lite_sf("Barcelona",
+                   limit = 1,
+                   points_only = FALSE, full_results=TRUE)###cargamos un mapa general de Barcelona
+
+discotecas_DIR_SHP <- st_as_sf(discotecas_DIR_COOR, 
+                      coords = c( x = "longitud", y = "latitud"), 
+                      crs = 4326)###Cambiamos la geocodificación a formato shapefile
+
+```
+
+
+Cogemos los datos de ubicación de las mesas electorales y filtramos por Barcelona municipio
+```{r}
+mesas <- read_xlsx("DATOS_EJERCICIO_FINAL.xlsx",
+                                sheet = "Colegios_Electorales_2015")###cargamos direcciones colegios
+
+glimpse(mesas)
+
+mesas_bcn<-mesas %>%
+  filter(Prov.=="08" & Munic.=="019")
+```
+*Importante* En uso se nos dice que las coordenadas del colegio electoral están dadas en EPSG:25830
+
+Creamos la dirección de distrito+sección+mesa para identificar y reducimos variables del dataset.
+```{r}
+mesas_bcn$cod.mesa <- paste(mesas_bcn$Distrito,mesas_bcn$Sección,mesas_bcn$Mesa, sep="")
+
+mesas_bcn<-rename(mesas_bcn, 
+                     Colegio = `Nombre de local electoral`,
+                     Direccion_completa = `Dirección de local electoral`,
+                     latitud = `Coordenada Y`,
+                     longitud = `Coordenada X`)
+
+mesas_bcn <- mesas_bcn %>% 
+  select(cod.mesa,Colegio,Direccion_completa, latitud, longitud)
+
+glimpse(mesas_bcn)
+```
+
+Cogemos los datos de resultados electorales por sección y filtramos por Barcelona municipio
+```{r}
+votos_seccion <- read_xlsx("DATOS_EJERCICIO_FINAL.xlsx",
+                                sheet = "Resultados_Electorales_2015")###cargamos votos secciones censales
+glimpse(votos_seccion)
+
+votos_seccion_bcn<-votos_seccion %>%
+  filter(COD.PROV=="08" & COD.MUN=="019")
+```
+
+Creamos dirección distrito+sección+mesa y variable de voto a PODEMOS. Después, reducimos dataset.
+```{r}
+votos_seccion_bcn$cod.mesa <- paste(votos_seccion_bcn$DISTRITO,votos_seccion_bcn$SECCION,
+                                    votos_seccion_bcn$MESA, sep="")
+
+votos_seccion_bcn$votos_podemos<- votos_seccion_bcn$PODEMOS
+votos_seccion_bcn$votos_erc<-votos_seccion_bcn$ERC.CATSI #Se usará para el segundo apartado de la práctica
+votos_seccion_bcn$votos_validos<- votos_seccion_bcn$VOTOS.CANDIDATURAS + votos_seccion_bcn$BLANCOS + 
+  votos_seccion_bcn$NULOS
+
+votos_seccion_bcn <- votos_seccion_bcn %>% 
+  select(cod.mesa,votos_podemos, votos_erc, votos_validos)
+
+glimpse(votos_seccion_bcn)
+```
+
+Unimos datos de localización de mesas y voto por mesa en un dataset.
+```{r}
+Combinado_mesas <- full_join(mesas_bcn, votos_seccion_bcn)
+glimpse(Combinado_mesas)
+```
+
+Agrupamos los datos de votos en mesas electorales por COLEGIOS ELECTORALES.
+```{r}
+colegios <- Combinado_mesas %>%
+  group_by(Colegio, Direccion_completa, latitud, longitud) %>%
+  summarise_at (vars(votos_validos,votos_podemos, votos_erc), sum)
+
+
+colegios <- colegios %>% ungroup()
+
+colegios$prc_votos_podemos <- colegios$votos_podemos / colegios$votos_validos *100
+colegios$prc_votos_podemos <- round(colegios$prc_votos_podemos,2)
+
+colegios$prc_votos_erc <- colegios$votos_erc / colegios$votos_validos *100
+colegios$prc_votos_erc <- round(colegios$prc_votos_erc,2)
+
+glimpse(colegios)
+```
+Lo transformamos a SF desde sus coordenadas en 25830 al uso 4326
+```{r}
+colegios_SF <- st_as_sf(colegios, 
+                      coords = c(x = "longitud", y = "latitud"),
+                      crs = 25830)
+
+glimpse(colegios_SF)
+
+colegios_SF <- st_transform(colegios_SF, 4326)
+glimpse(colegios_SF)
+```
+
+Graficamos la distribución de coordenadas de los colegios. 
+```{r}
+plot(st_geometry(colegios_SF), axes = TRUE)
+```
+Comprobamos que hay uno con coordenadas erróneas. 
+
+Eliminamos los Colegios electorales con datos erróneos de coordenadas y recreamos colegios_SF.
+```{r}
+colegios_SF <- colegios_SF[-155,]
+colegios_SF <- colegios_SF[-147,]
+colegios_SF <- colegios_SF[-179,]
+colegios_SF <- colegios_SF[-234,]
+
+plot(st_geometry(colegios_SF), axes = TRUE)
+
+```
+Ahora, la distribución es más correcta. 
+
+Creamos el  mapa del municipio de Barcelona.
+```{r}
+Barcelona_SHP <- geo_lite_sf("Barcelona",
+                   limit = 1,
+                   points_only = FALSE, full_results=TRUE)###cargamos un mapa general de Barcelona
+
+glimpse(Barcelona_SHP)
+```
+
+
+
+Hacemos mapa de la distribución de colegios electorales por el municipio de Barcelona.
+```{r}
+ggplot(Barcelona_SHP)+
+  geom_sf() +
+  geom_sf(data = colegios_SF,
+          inherit.aes = FALSE,
+          colour = "red",
+          fill = "darkred",
+          alpha = .8,
+          size = 1,
+          shape = 21) +
+  labs(x = "", y = "")  +
+  theme_minimal() +
+  annotation_north_arrow(location = "tr", which_north = "true", style = north_arrow_fancy_orienteering) +
+  annotation_scale(location = "br")
+```
+
+hacemos gráfico de colegios electorales y discotecas en barcelona
+```{r}
+ggplot(Barcelona_SHP)+
+  geom_sf() +
+  geom_sf(data = colegios_SF,
+          inherit.aes = FALSE,
+          colour = "red",
+          fill = "darkred",
+          alpha = .8,
+          size = 1,
+          shape = 21) +
+  geom_sf(data = discotecas_DIR_SHP,
+          inherit.aes = FALSE,
+          colour = "blue",
+          fill = "blue",
+          alpha = .8,
+          size = 2,
+          shape = 21) +
+  labs(x = "", y = "")  +
+  theme_minimal() +
+  annotation_north_arrow(location = "tr", which_north = "true", style = north_arrow_fancy_orienteering) +
+  annotation_scale(location = "br")
+```
+
+Damos ID a los colegios
+```{r}
+colegios_SF <- tibble::rowid_to_column(colegios_SF, "ID")
+```
+
+Calculamos las distancias entre colegios electorales y discotecas. 
+```{r}
+library(units)
+
+DIST_TOTAL <- as.data.frame(st_distance(colegios_SF, discotecas_DIR_SHP) |> 
+  set_units(km))
+```
+
+Miramos la distancia media.
+```{r}
+DIST_TOTAL_MEDIA <- DIST_TOTAL|> 
+ mutate(dist_media = rowMeans(DIST_TOTAL))
+
+DIST_TOTAL_MEDIA <- tibble::rowid_to_column(DIST_TOTAL_MEDIA, "ID")
+
+DIST_TOTAL_MEDIA <- DIST_TOTAL_MEDIA|>
+ select(ID, dist_media)
+
+SHP_final <- full_join(colegios_SF, DIST_TOTAL_MEDIA)
+glimpse(SHP_final)
+```
+```{r}
+REG <- lm(prc_votos_podemos ~ dist_media, data = SHP_final)
+
+summary(REG)
+```
+
+```{r}
+ggplot(SHP_final, aes(x = dist_media, y = prc_votos_podemos)) +
+  geom_point() +
+  stat_smooth(method = lm)+
+  theme_minimal()
+```
+
+
+##Curiosidad: relación no causal entre cercanía a logia masónica y voto a ERC.
+
+*Importante* Debido a que muchas de las casillas de voto de ERC estaban vacías (no se presenta fuera de cataluña) el programa R identifica sus datos como TRUE o FALSE. Para llevar a cabo el siguiente análisis se han rellenado previamente en el excel todas las celdas vacias de ERCCATSI con ceros, para que el programa lea la variable como numérica en lugar de como lógica. 
+
+Introducimos las direcciones de las Logias masónicas en el municipio de Barcelona
+```{r}
+Logias <- tibble::tribble(
+~nombre,                  ~dir,
+"Gran Logia de España", "Carrer de Bailèn 7 Distrito Eixample Barcelona 08010",
+"Gran Oriente Español", "Carrer de Balmes 129 Distrito Eixample Barcelona 08008",
+"Logia Unión Española", "Carrer de la Diputació 238 Distrito Eixample Barcelona 08007",
+"Logia Justícia Universal", "Carrer de Bailèn 7 Distrito Eixample Barcelona 08010",
+"Templo Masónico de Barcelona", "Carrer de Aribau 197 Distrito Eixample Barcelona 08021",
+"Gran Logia Simbólica Española", "Carrer de la Princesa 24 Distrito Ciutat Vella Barcelona 08003",
+"Logia Fraternidad Universal", "Carrer de Mallorca 214 Distrito Eixample Barcelona 08008",
+"Templo Masónico Fraternidad Universal", "Carrer de la Diputació 202 Distrito Eixample Barcelona 08011",
+"Gran Logia Femenina de España", "Carrer del Comte d'Urgell 187 Distrito Eixample Barcelona 08036",
+"Logia Constancia", "Carrer de Còrsega 222 Distrito Eixample Barcelona 08036",
+"Templo Masónico de la Logia Cóndor", "Carrer de Mallorca 114 Distrito Eixample Barcelona 08008",
+"Logia Libertad", "Carrer de la Diputació 249 Distrito Eixample Barcelona 08007",
+"Templo Masónico de la Logia Acacia", "Carrer de la Marina 148 Distrito Sant Martí Barcelona 08013",
+"Logia Fraternidad Barcelonesa", "Carrer de Balmes 145 Distrito Eixample Barcelona 08008",
+"Gran Oriente Nacional de España", "Carrer del Consell de Cent 237 Distrito Eixample Barcelona 08011",
+"Logia Humanidad", "Carrer de la Marina 137 Distrito Sant Martí Barcelona 08013",
+"Gran Logia Simbólica Española", "Carrer de Sant Pere Més Baix 69 Distrito Ciutat Vella Barcelona 08003",
+"Templo Masónico de la Logia Tolerancia", "Carrer del Comte d'Urgell 240 Distrito Eixample Barcelona 08011")###hacemos un data frame con las Iglesias de barcelona
+
+Logias_DIR_COOR <- Logias |> 
+  tidygeocoder::geocode(dir, method = 'arcgis', lat = latitud , long = longitud)###geocodificamos el formato
+
+ggplot(Logias_DIR_COOR, aes(longitud, latitud), color = "skyblue") +
+  borders("world", regions="Spain") + geom_point() +
+  ggrepel::geom_label_repel(aes(label = nombre)) +
+  theme_void()###visualizamos
+```
+
+```{r}
+Logias_DIR_SHP <- st_as_sf(Logias_DIR_COOR, 
+                      coords = c( x = "longitud", y = "latitud"), 
+                      crs = 4326)###Cambiamos la geocodificación a formato shapefile
+
+ggplot(Barcelona_SHP)+
+ geom_sf()+
+ geom_sf_text(data = Logias_DIR_SHP, aes(label = "🕆︎"), size=6, color = "yellow4")+
+ theme_void()+
+ ggtitle("Barcelona Municipio")###visualizamos Logias con ambas capas
+```
+
+```{r}
+ggplot()+
+  geom_sf(data=Barcelona_SHP)+
+
+  geom_sf(data=colegios_SF,
+          inherit.aes = FALSE,
+          colour = "red3",
+          alpha = .8,
+          size = 1,
+          shape = 18)+
+ geom_sf_text(data = Logias_DIR_SHP,
+              aes(label = "🕆︎"),
+              size=6, 
+              color = "yellow4")+
+ theme_void()+
+ ggtitle("Mapa municipal de Barcelona con logias masonicas y colegios electorales") +
+  labs(x = "", y = "")  +
+  theme_minimal() +
+  annotation_north_arrow(location = "tr", which_north = "true", style = north_arrow_fancy_orienteering) +
+  annotation_scale(location = "br")
+```
+
+```{r}
+DIST_TOTAL_erc <- as.data.frame(st_distance(colegios_SF,Logias_DIR_SHP) |> 
+  set_units(km))
+```
+
+
+```{r}
+DIST_TOTAL_MEDIA_erc <- DIST_TOTAL_erc|> 
+ mutate(dist_media = rowMeans(DIST_TOTAL_erc))
+
+DIST_TOTAL_MEDIA_erc <- tibble::rowid_to_column(DIST_TOTAL_MEDIA_erc, "ID")
+
+DIST_TOTAL_MEDIA_erc <- DIST_TOTAL_MEDIA_erc|>
+ select(ID, dist_media)
+
+SHP_erc <- full_join(colegios_SF, DIST_TOTAL_MEDIA_erc)
+```
+
+
+```{r}
+REG_erc <- lm(prc_votos_erc ~ dist_media, data = SHP_erc)
+
+summary(REG_erc)
+```
+
+```{r}
+ggplot(SHP_erc, aes(x = dist_media, y = prc_votos_erc)) +
+  geom_point() +
+  stat_smooth(method = lm)+
+  theme_minimal()
+```
+
